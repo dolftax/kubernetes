@@ -14,13 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package qoscontainer
 
 import (
 	"fmt"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -41,24 +40,6 @@ const (
 	// of the qos level cgroup resource constraints
 	periodicQOSCgroupUpdateInterval = 1 * time.Minute
 )
-
-type QOSContainerManager interface {
-	Start(func() v1.ResourceList, ActivePodsFunc) error
-	GetQOSContainersInfo() QOSContainersInfo
-	UpdateCgroups() error
-}
-
-type qosContainerManagerImpl struct {
-	sync.Mutex
-	nodeInfo           *v1.Node
-	qosContainersInfo  QOSContainersInfo
-	subsystems         *CgroupSubsystems
-	cgroupManager      CgroupManager
-	activePods         ActivePodsFunc
-	getNodeAllocatable func() v1.ResourceList
-	cgroupRoot         string
-	qosReserved        map[v1.ResourceName]int64
-}
 
 func NewQOSContainerManager(subsystems *CgroupSubsystems, cgroupRoot string, nodeConfig NodeConfig) (QOSContainerManager, error) {
 	if !nodeConfig.CgroupsPerQOS {

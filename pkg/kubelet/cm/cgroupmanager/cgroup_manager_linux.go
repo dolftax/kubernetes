@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package cgroupmanager
 
 import (
 	"fmt"
@@ -34,6 +34,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
+	cmhelper "k8s.io/kubernetes/pkg/kubelet/cm/helper"
+	cmtypes "k8s.io/kubernetes/pkg/kubelet/cm/types"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
 )
 
@@ -55,7 +57,7 @@ var hugePageSizeList = []string{"B", "kB", "MB", "GB", "TB", "PB"}
 // For example, the name /Burstable/pod_123-456 becomes Burstable-pod_123_456.slice
 // If outputToCgroupFs is true, it expands the systemd name into the cgroupfs form.
 // For example, it will return /Burstable.slice/Burstable-pod_123_456.slice in above scenario.
-func ConvertCgroupNameToSystemd(cgroupName CgroupName, outputToCgroupFs bool) string {
+func ConvertCgroupNameToSystemd(cgroupName cmtypes.CgroupName, outputToCgroupFs bool) string {
 	name := string(cgroupName)
 	result := ""
 	if name != "" && name != "/" {
@@ -147,9 +149,9 @@ func (l *libcontainerAdapter) newManager(cgroups *libcontainerconfigs.Cgroup, pa
 	return nil, fmt.Errorf("invalid cgroup manager configuration")
 }
 
-func (l *libcontainerAdapter) revertName(name string) CgroupName {
+func (l *libcontainerAdapter) revertName(name string) cmtypes.CgroupName {
 	if l.cgroupManagerType != libcontainerSystemd {
-		return CgroupName(name)
+		return cmtypes.CgroupName(name)
 	}
 
 	driverName, err := ConvertCgroupFsNameToSystemd(name)
@@ -159,28 +161,17 @@ func (l *libcontainerAdapter) revertName(name string) CgroupName {
 	driverName = strings.TrimSuffix(driverName, ".slice")
 	driverName = strings.Replace(driverName, "-", "/", -1)
 	driverName = strings.Replace(driverName, "_", "-", -1)
-	return CgroupName(driverName)
+	return cmtypes.CgroupName(driverName)
 }
 
 // adaptName converts a CgroupName identifier to a driver specific conversion value.
 // if outputToCgroupFs is true, the result is returned in the cgroupfs format rather than the driver specific form.
-func (l *libcontainerAdapter) adaptName(cgroupName CgroupName, outputToCgroupFs bool) string {
+func (l *libcontainerAdapter) adaptName(cgroupName cmtypes.CgroupName, outputToCgroupFs bool) string {
 	if l.cgroupManagerType != libcontainerSystemd {
 		name := string(cgroupName)
 		return name
 	}
 	return ConvertCgroupNameToSystemd(cgroupName, outputToCgroupFs)
-}
-
-// CgroupSubsystems holds information about the mounted cgroup subsystems
-type CgroupSubsystems struct {
-	// Cgroup subsystem mounts.
-	// e.g.: "/sys/fs/cgroup/cpu" -> ["cpu", "cpuacct"]
-	Mounts []libcontainercgroups.Mount
-
-	// Cgroup subsystem to their mount location.
-	// e.g.: "cpu" -> "/sys/fs/cgroup/cpu"
-	MountPoints map[string]string
 }
 
 // cgroupManagerImpl implements the CgroupManager interface.
@@ -190,16 +181,16 @@ type CgroupSubsystems struct {
 type cgroupManagerImpl struct {
 	// subsystems holds information about all the
 	// mounted cgroup subsystems on the node
-	subsystems *CgroupSubsystems
+	subsystems *cmtypes.CgroupSubsystems
 	// simplifies interaction with libcontainer and its cgroup managers
 	adapter *libcontainerAdapter
 }
 
 // Make sure that cgroupManagerImpl implements the CgroupManager interface
-var _ CgroupManager = &cgroupManagerImpl{}
+var CgroupManager = &cgroupManagerImpl{}
 
 // NewCgroupManager is a factory method that returns a CgroupManager
-func NewCgroupManager(cs *CgroupSubsystems, cgroupDriver string) CgroupManager {
+func NewCgroupManager(cs *cmtypes.CgroupSubsystems, cgroupDriver string) cmtypes.CgroupManager {
 	managerType := libcontainerCgroupfs
 	if cgroupDriver == string(libcontainerSystemd) {
 		managerType = libcontainerSystemd
@@ -211,17 +202,17 @@ func NewCgroupManager(cs *CgroupSubsystems, cgroupDriver string) CgroupManager {
 }
 
 // Name converts the cgroup to the driver specific value in cgroupfs form.
-func (m *cgroupManagerImpl) Name(name CgroupName) string {
+func (m *cgroupManagerImpl) Name(name cmtypes.CgroupName) string {
 	return m.adapter.adaptName(name, true)
 }
 
 // CgroupName converts the literal cgroupfs name on the host to an internal identifier.
-func (m *cgroupManagerImpl) CgroupName(name string) CgroupName {
+func (m *cgroupManagerImpl) CgroupName(name string) cmtypes.CgroupName {
 	return m.adapter.revertName(name)
 }
 
 // buildCgroupPaths builds a path to each cgroup subsystem for the specified name.
-func (m *cgroupManagerImpl) buildCgroupPaths(name CgroupName) map[string]string {
+func (m *cgroupManagerImpl) buildCgroupPaths(name cmtypes.CgroupName) map[string]string {
 	cgroupFsAdaptedName := m.Name(name)
 	cgroupPaths := make(map[string]string, len(m.subsystems.MountPoints))
 	for key, val := range m.subsystems.MountPoints {
@@ -231,7 +222,7 @@ func (m *cgroupManagerImpl) buildCgroupPaths(name CgroupName) map[string]string 
 }
 
 // Exists checks if all subsystem cgroups already exist
-func (m *cgroupManagerImpl) Exists(name CgroupName) bool {
+func (m *cgroupManagerImpl) Exists(name cmtypes.CgroupName) bool {
 	// Get map of all cgroup paths on the system for the particular cgroup
 	cgroupPaths := m.buildCgroupPaths(name)
 
@@ -258,7 +249,7 @@ func (m *cgroupManagerImpl) Exists(name CgroupName) bool {
 }
 
 // Destroy destroys the specified cgroup
-func (m *cgroupManagerImpl) Destroy(cgroupConfig *CgroupConfig) error {
+func (m *cgroupManagerImpl) Destroy(cgroupConfig *cmtypes.CgroupConfig) error {
 	start := time.Now()
 	defer func() {
 		metrics.CgroupManagerLatency.WithLabelValues("destroy").Observe(metrics.SinceInMicroseconds(start))
@@ -268,8 +259,8 @@ func (m *cgroupManagerImpl) Destroy(cgroupConfig *CgroupConfig) error {
 
 	// we take the location in traditional cgroupfs format.
 	abstractCgroupFsName := string(cgroupConfig.Name)
-	abstractParent := CgroupName(path.Dir(abstractCgroupFsName))
-	abstractName := CgroupName(path.Base(abstractCgroupFsName))
+	abstractParent := cmtypes.CgroupName(path.Dir(abstractCgroupFsName))
+	abstractName := cmtypes.CgroupName(path.Base(abstractCgroupFsName))
 
 	driverParent := m.adapter.adaptName(abstractParent, false)
 	driverName := m.adapter.adaptName(abstractName, false)
@@ -340,7 +331,7 @@ func setSupportedSubsystems(cgroupConfig *libcontainerconfigs.Cgroup) error {
 	return nil
 }
 
-func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcontainerconfigs.Resources {
+func (m *cgroupManagerImpl) toResources(resourceConfig *cmtypes.ResourceConfig) *libcontainerconfigs.Resources {
 	resources := &libcontainerconfigs.Resources{}
 	if resourceConfig == nil {
 		return resources
@@ -385,7 +376,7 @@ func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcont
 }
 
 // Update updates the cgroup with the specified Cgroup Configuration
-func (m *cgroupManagerImpl) Update(cgroupConfig *CgroupConfig) error {
+func (m *cgroupManagerImpl) Update(cgroupConfig *cmtypes.CgroupConfig) error {
 	start := time.Now()
 	defer func() {
 		metrics.CgroupManagerLatency.WithLabelValues("update").Observe(metrics.SinceInMicroseconds(start))
@@ -399,8 +390,8 @@ func (m *cgroupManagerImpl) Update(cgroupConfig *CgroupConfig) error {
 
 	// we take the location in traditional cgroupfs format.
 	abstractCgroupFsName := string(cgroupConfig.Name)
-	abstractParent := CgroupName(path.Dir(abstractCgroupFsName))
-	abstractName := CgroupName(path.Base(abstractCgroupFsName))
+	abstractParent := cmtypes.CgroupName(path.Dir(abstractCgroupFsName))
+	abstractName := cmtypes.CgroupName(path.Base(abstractCgroupFsName))
 
 	driverParent := m.adapter.adaptName(abstractParent, false)
 	driverName := m.adapter.adaptName(abstractName, false)
@@ -425,7 +416,7 @@ func (m *cgroupManagerImpl) Update(cgroupConfig *CgroupConfig) error {
 }
 
 // Create creates the specified cgroup
-func (m *cgroupManagerImpl) Create(cgroupConfig *CgroupConfig) error {
+func (m *cgroupManagerImpl) Create(cgroupConfig *cmtypes.CgroupConfig) error {
 	start := time.Now()
 	defer func() {
 		metrics.CgroupManagerLatency.WithLabelValues("create").Observe(metrics.SinceInMicroseconds(start))
@@ -433,8 +424,8 @@ func (m *cgroupManagerImpl) Create(cgroupConfig *CgroupConfig) error {
 
 	// we take the location in traditional cgroupfs format.
 	abstractCgroupFsName := string(cgroupConfig.Name)
-	abstractParent := CgroupName(path.Dir(abstractCgroupFsName))
-	abstractName := CgroupName(path.Base(abstractCgroupFsName))
+	abstractParent := cmtypes.CgroupName(path.Dir(abstractCgroupFsName))
+	abstractName := cmtypes.CgroupName(path.Base(abstractCgroupFsName))
 
 	driverParent := m.adapter.adaptName(abstractParent, false)
 	driverName := m.adapter.adaptName(abstractName, false)
@@ -475,7 +466,7 @@ func (m *cgroupManagerImpl) Create(cgroupConfig *CgroupConfig) error {
 }
 
 // Scans through all subsystems to find pids associated with specified cgroup.
-func (m *cgroupManagerImpl) Pids(name CgroupName) []int {
+func (m *cgroupManagerImpl) Pids(name cmtypes.CgroupName) []int {
 	// we need the driver specific name
 	cgroupFsName := m.Name(name)
 
@@ -491,7 +482,7 @@ func (m *cgroupManagerImpl) Pids(name CgroupName) []int {
 			continue
 		}
 		// Get a list of pids that are still charged to the pod's cgroup
-		pids, err = getCgroupProcs(dir)
+		pids, err = cmhelper.GetCgroupProcs(dir)
 		if err != nil {
 			continue
 		}
@@ -506,7 +497,7 @@ func (m *cgroupManagerImpl) Pids(name CgroupName) []int {
 			if !info.IsDir() {
 				return nil
 			}
-			pids, err = getCgroupProcs(path)
+			pids, err = cmhelper.GetCgroupProcs(path)
 			if err != nil {
 				glog.V(4).Infof("cgroup manager encountered error getting procs for cgroup path %q: %v", path, err)
 				return filepath.SkipDir
@@ -525,13 +516,13 @@ func (m *cgroupManagerImpl) Pids(name CgroupName) []int {
 }
 
 // ReduceCPULimits reduces the cgroup's cpu shares to the lowest possible value
-func (m *cgroupManagerImpl) ReduceCPULimits(cgroupName CgroupName) error {
+func (m *cgroupManagerImpl) ReduceCPULimits(cgroupName cmtypes.CgroupName) error {
 	// Set lowest possible CpuShares value for the cgroup
-	minimumCPUShares := uint64(MinShares)
-	resources := &ResourceConfig{
+	minimumCPUShares := uint64(cmhelper.MinShares)
+	resources := &cmtypes.ResourceConfig{
 		CpuShares: &minimumCPUShares,
 	}
-	containerConfig := &CgroupConfig{
+	containerConfig := &cmtypes.CgroupConfig{
 		Name:               cgroupName,
 		ResourceParameters: resources,
 	}
@@ -551,16 +542,16 @@ func getStatsSupportedSubsystems(cgroupPaths map[string]string) (*libcontainercg
 	return stats, nil
 }
 
-func toResourceStats(stats *libcontainercgroups.Stats) *ResourceStats {
-	return &ResourceStats{
-		MemoryStats: &MemoryStats{
+func toResourceStats(stats *libcontainercgroups.Stats) *cmtypes.ResourceStats {
+	return &cmtypes.ResourceStats{
+		MemoryStats: &cmtypes.MemoryStats{
 			Usage: int64(stats.MemoryStats.Usage.Usage),
 		},
 	}
 }
 
 // Get sets the ResourceParameters of the specified cgroup as read from the cgroup fs
-func (m *cgroupManagerImpl) GetResourceStats(name CgroupName) (*ResourceStats, error) {
+func (m *cgroupManagerImpl) GetResourceStats(name cmtypes.CgroupName) (*cmtypes.ResourceStats, error) {
 	cgroupPaths := m.buildCgroupPaths(name)
 	stats, err := getStatsSupportedSubsystems(cgroupPaths)
 	if err != nil {

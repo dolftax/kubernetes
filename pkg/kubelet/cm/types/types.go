@@ -14,9 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package types
 
 import (
+	"sync"
+
+	libcontainercgroups "github.com/opencontainers/runc/libcontainer/cgroups"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -90,11 +93,40 @@ type CgroupManager interface {
 	GetResourceStats(name CgroupName) (*ResourceStats, error)
 }
 
+// CgroupSubsystems holds information about the mounted cgroup subsystems
+type CgroupSubsystems struct {
+	// Cgroup subsystem mounts.
+	// e.g.: "/sys/fs/cgroup/cpu" -> ["cpu", "cpuacct"]
+	Mounts []libcontainercgroups.Mount
+
+	// Cgroup subsystem to their mount location.
+	// e.g.: "cpu" -> "/sys/fs/cgroup/cpu"
+	MountPoints map[string]string
+}
+
 // QOSContainersInfo stores the names of containers per qos
 type QOSContainersInfo struct {
 	Guaranteed string
 	BestEffort string
 	Burstable  string
+}
+
+type QOSContainerManager interface {
+	Start(func() v1.ResourceList, ActivePodsFunc) error
+	GetQOSContainersInfo() QOSContainersInfo
+	UpdateCgroups() error
+}
+
+type qosContainerManagerImpl struct {
+	sync.Mutex
+	nodeInfo           *v1.Node
+	qosContainersInfo  QOSContainersInfo
+	subsystems         *CgroupSubsystems
+	cgroupManager      CgroupManager
+	activePods         ActivePodsFunc
+	getNodeAllocatable func() v1.ResourceList
+	cgroupRoot         string
+	qosReserved        map[v1.ResourceName]int64
 }
 
 // PodContainerManager stores and manages pod level containers

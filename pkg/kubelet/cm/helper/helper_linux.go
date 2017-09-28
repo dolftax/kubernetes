@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package helper
 
 import (
 	"bufio"
@@ -29,6 +29,7 @@ import (
 	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
 	v1qos "k8s.io/kubernetes/pkg/api/v1/helper/qos"
 	"k8s.io/kubernetes/pkg/api/v1/resource"
+	cmtypes "k8s.io/kubernetes/pkg/kubelet/cm/types"
 )
 
 const (
@@ -102,7 +103,7 @@ func HugePageLimits(resourceList v1.ResourceList) map[int64]int64 {
 }
 
 // ResourceConfigForPod takes the input pod and outputs the cgroup resource config.
-func ResourceConfigForPod(pod *v1.Pod) *ResourceConfig {
+func ResourceConfigForPod(pod *v1.Pod) *cmtypes.ResourceConfig {
 	// sum requests and limits.
 	reqs, limits := resource.PodRequestsAndLimits(pod)
 
@@ -149,7 +150,7 @@ func ResourceConfigForPod(pod *v1.Pod) *ResourceConfig {
 	qosClass := v1qos.GetPodQOS(pod)
 
 	// build the result
-	result := &ResourceConfig{}
+	result := &cmtypes.ResourceConfig{}
 	if qosClass == v1.PodQOSGuaranteed {
 		result.CpuShares = &cpuShares
 		result.CpuQuota = &cpuQuota
@@ -173,14 +174,14 @@ func ResourceConfigForPod(pod *v1.Pod) *ResourceConfig {
 }
 
 // GetCgroupSubsystems returns information about the mounted cgroup subsystems
-func GetCgroupSubsystems() (*CgroupSubsystems, error) {
+func GetCgroupSubsystems() (*cmtypes.CgroupSubsystems, error) {
 	// get all cgroup mounts.
 	allCgroups, err := libcontainercgroups.GetCgroupMounts(true)
 	if err != nil {
-		return &CgroupSubsystems{}, err
+		return &cmtypes.CgroupSubsystems{}, err
 	}
 	if len(allCgroups) == 0 {
-		return &CgroupSubsystems{}, fmt.Errorf("failed to find cgroup mounts")
+		return &cmtypes.CgroupSubsystems{}, fmt.Errorf("failed to find cgroup mounts")
 	}
 	mountPoints := make(map[string]string, len(allCgroups))
 	for _, mount := range allCgroups {
@@ -188,7 +189,7 @@ func GetCgroupSubsystems() (*CgroupSubsystems, error) {
 			mountPoints[subsystem] = mount.Mountpoint
 		}
 	}
-	return &CgroupSubsystems{
+	return &cmtypes.CgroupSubsystems{
 		Mounts:      allCgroups,
 		MountPoints: mountPoints,
 	}, nil
@@ -197,7 +198,7 @@ func GetCgroupSubsystems() (*CgroupSubsystems, error) {
 // getCgroupProcs takes a cgroup directory name as an argument
 // reads through the cgroup's procs file and returns a list of tgid's.
 // It returns an empty list if a procs file doesn't exists
-func getCgroupProcs(dir string) ([]int, error) {
+func GetCgroupProcs(dir string) ([]int, error) {
 	procsFile := filepath.Join(dir, "cgroup.procs")
 	f, err := os.Open(procsFile)
 	if err != nil {

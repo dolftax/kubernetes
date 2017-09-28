@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package containermanager
 
 import (
 	"bufio"
@@ -45,6 +45,7 @@ import (
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager"
+	cmtypes "k8s.io/kubernetes/pkg/kubelet/cm/types"
 	cmutil "k8s.io/kubernetes/pkg/kubelet/cm/util"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/qos"
@@ -107,14 +108,14 @@ type containerManagerImpl struct {
 	status Status
 	// External containers being managed.
 	systemContainers []*systemContainer
-	qosContainers    QOSContainersInfo
+	qosContainers    cmtypes.QOSContainersInfo
 	// Tasks that are run periodically
 	periodicTasks []func()
 	// holds all the mounted cgroup subsystems
-	subsystems *CgroupSubsystems
+	subsystems *cmtypes.CgroupSubsystems
 	nodeInfo   *v1.Node
 	// Interface for cgroup management
-	cgroupManager CgroupManager
+	cgroupManager cmtypes.CgroupManager
 	// Capacity of this node.
 	capacity v1.ResourceList
 	// Absolute cgroupfs path to a cgroup that Kubelet needs to place all pods under.
@@ -123,7 +124,7 @@ type containerManagerImpl struct {
 	// Event recorder interface.
 	recorder record.EventRecorder
 	// Interface for QoS cgroup management
-	qosContainerManager QOSContainerManager
+	qosContainerManager cmtypes.QOSContainerManager
 	// Interface for exporting and allocating devices reported by device plugins.
 	devicePluginHandler DevicePluginHandler
 	// Interface for CPU affinity management.

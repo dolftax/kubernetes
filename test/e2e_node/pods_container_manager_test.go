@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cgroupmanager"
 	"k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/golang/glog"
@@ -69,7 +70,7 @@ func makePodToVerifyCgroups(cgroupNames []cm.CgroupName) *v1.Pod {
 		// Add top level cgroup used to enforce node allocatable.
 		cgroupName = cm.CgroupName(path.Join(defaultNodeAllocatableCgroup, string(cgroupName)))
 		if framework.TestContext.KubeletConfig.CgroupDriver == "systemd" {
-			cgroupFsNames = append(cgroupFsNames, cm.ConvertCgroupNameToSystemd(cgroupName, true))
+			cgroupFsNames = append(cgroupFsNames, cgroupmanager.ConvertCgroupNameToSystemd(cgroupName, true))
 		} else {
 			cgroupFsNames = append(cgroupFsNames, string(cgroupName))
 		}

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package containermanager
 
 import (
 	"time"
@@ -24,6 +24,8 @@ import (
 	"k8s.io/api/core/v1"
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
 	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
+	"k8s.io/kubernetes/pkg/kubelet/cm"
+	cmtypes "k8s.io/kubernetes/pkg/kubelet/cm/types"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/pkg/kubelet/status"
@@ -54,13 +56,13 @@ type ContainerManager interface {
 
 	// NewPodContainerManager is a factory method which returns a podContainerManager object
 	// Returns a noop implementation if qos cgroup hierarchy is not enabled
-	NewPodContainerManager() PodContainerManager
+	NewPodContainerManager() cmtypes.PodContainerManager
 
 	// GetMountedSubsystems returns the mounted cgroup subsystems on the node
-	GetMountedSubsystems() *CgroupSubsystems
+	GetMountedSubsystems() *cmtypes.CgroupSubsystems
 
 	// GetQOSContainersInfo returns the names of top level QoS containers
-	GetQOSContainersInfo() QOSContainersInfo
+	GetQOSContainersInfo() cmtypes.QOSContainersInfo
 
 	// GetNodeAllocatableReservation returns the amount of compute resources that have to be reserved from scheduling.
 	GetNodeAllocatableReservation() v1.ResourceList
@@ -76,7 +78,7 @@ type ContainerManager interface {
 	// extended resources required by container.
 	GetResources(pod *v1.Pod, container *v1.Container, activePods []*v1.Pod) (*kubecontainer.RunContainerOptions, error)
 
-	InternalContainerLifecycle() InternalContainerLifecycle
+	InternalContainerLifecycle() cm.InternalContainerLifecycle
 }
 
 type NodeConfig struct {
